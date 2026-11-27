@@ -223,10 +223,21 @@ class MainActivity : Activity() {
         content.addView(this)
     }
 
+    private fun navGlyph(name: String): String = when (name) {
+        "Home" -> "⌂"
+        "Apps" -> "▦"
+        "Movies" -> "▣"
+        "TV Shows" -> "▤"
+        "Games" -> "⌁"
+        "Settings" -> "⚙"
+        "Power" -> "⏻"
+        else -> "•"
+    }
+
     private fun updateNavSelection(name: String) {
         navViews.forEach { (label, item) ->
             val active = label == name
-            item.text = (if (active) "⌂  " else "   ") + label
+            item.text = "${navGlyph(label)}  " + label
             item.setTextColor(Color.argb(if (active) 255 else 175, 255, 255, 255))
             item.typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             item.background = if (active) GradientDrawable().apply {
@@ -258,7 +269,7 @@ class MainActivity : Activity() {
     }
 
     private fun navItem(label: String, selected: Boolean = false, action: () -> Unit = {}): TextView =
-        tv((if (selected) "⌂  " else "   ") + label, 12f, if (selected) 255 else 175, selected).apply {
+        tv("${navGlyph(label)}  " + label, 11f, if (selected) 255 else 185, selected).apply {
             setPadding(dp(10), dp(10), dp(6), dp(10))
             background = if (selected) GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat()
@@ -266,6 +277,11 @@ class MainActivity : Activity() {
             } else null
             isFocusable = true
             isClickable = true
+            setOnFocusChangeListener { view, focused ->
+                view.animate().scaleX(if (focused) 1.035f else 1f)
+                    .scaleY(if (focused) 1.035f else 1f).setDuration(120).start()
+                view.alpha = if (focused) 1f else 0.92f
+            }
             setOnClickListener { updateNavSelection(label); action() }
         }
 
