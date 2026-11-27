@@ -178,7 +178,7 @@ class MainActivity : Activity() {
     private fun buildUi() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.rgb(12, 11, 27))
+            setBackgroundColor(Color.TRANSPARENT)
             clipChildren = false
         }
 
@@ -264,7 +264,13 @@ class MainActivity : Activity() {
         scroll.addView(content, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         main.addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
         root.addView(main, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f))
-        setContentView(root)
+        // Place the wallpaper image behind the launcher UI.
+        bg = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+        val screen = FrameLayout(this).apply {
+            addView(bg, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+            addView(root, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        }
+        setContentView(screen)
 
         featured = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
