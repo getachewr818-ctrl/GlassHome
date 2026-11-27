@@ -334,8 +334,12 @@ class MainActivity : Activity() {
             }
         }
         header.addView(brandIcon, lp(dp(28), dp(28), r = 8))
-        val brand = tv("GlassHome", 14f, 245, true)
-        header.addView(brand)
+        val brandBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        brandBlock.addView(tv("GlassHome", 13f, 245, true))
+        brandBlock.addView(tv("YOUR WORLD. BEAUTIFULLY CONNECTED.", 5f, 150, false).apply {
+            letterSpacing = 0.12f
+        })
+        header.addView(brandBlock)
         header.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         val searchBar = tv("⌕  Search movies, apps and more", 13f, 170, false).apply {
             setPadding(dp(16), dp(10), dp(16), dp(10))
@@ -501,6 +505,56 @@ class MainActivity : Activity() {
         else list.forEach { row.addView(appCard(it)) }
     }
 
+    private fun recentCard(a: AppEntry): View {
+        val wrapper = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = lp(dp(144), WRAP_CONTENT, 4, 2, 6, 2)
+        }
+        val tile = FrameLayout(this).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(30, 53, 78), Color.rgb(20, 29, 52), Color.rgb(9, 18, 33))).apply {
+                cornerRadius = dp(10).toFloat()
+            }
+            isFocusable = true
+            isClickable = true
+        }
+        val appIcon = ImageView(this).apply {
+            setImageDrawable(a.icon)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            alpha = 0.92f
+        }
+        tile.addView(appIcon, FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER))
+        tile.addView(tv("▶", 10f, 255, true).apply {
+            gravity = Gravity.TOP or Gravity.LEFT
+            setPadding(dp(6), dp(4), dp(6), dp(4))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.argb(155, 8, 12, 25))
+            }
+        }, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.LEFT).apply {
+            setMargins(dp(6), dp(6), 0, 0)
+        })
+        glassify(tile, 10, { launch(a) }, null, 1.025f)
+        wrapper.addView(tile, LinearLayout.LayoutParams(MATCH_PARENT, dp(58)))
+        wrapper.addView(tv(a.label, 9f, 235, true).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(0, dp(5), 0, 0)
+        })
+        return wrapper
+    }
+
+    private fun fillRecent(list: List<AppEntry>) {
+        recentRow.removeAllViews()
+        if (list.isEmpty()) {
+            recentRow.addView(tv("Pick up where you left off", 12f, 145, false).apply {
+                setPadding(dp(8), dp(20), 0, dp(20))
+            })
+        } else {
+            list.forEach { recentRow.addView(recentCard(it)) }
+        }
+    }
+
     private fun getList(key: String) = (prefs.getString(key, "") ?: "").split(",").filter { it.isNotEmpty() }
     private fun putList(key: String, l: List<String>) = prefs.edit().putString(key, l.joinToString(",")).apply()
 
@@ -527,7 +581,7 @@ class MainActivity : Activity() {
         featuredApp = recents.firstOrNull() ?: apps.firstOrNull()
         fillFeatured()
         fill(favRow, favs, "Hold OK on any app to pin it here")
-        fill(recentRow, recents.take(10), "Apps you open will appear here")
+        fillRecent(recents.take(10))
         fill(allRow, apps, "No apps found")
         if (currentFocus == null) featured.requestFocus()
     }
