@@ -7,10 +7,12 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
+import android.graphics.drawable.RippleDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -18,6 +20,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.animation.DecelerateInterpolator
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -313,15 +316,64 @@ class MainActivity : Activity() {
         featured.addView(actions, lp(WRAP_CONTENT, WRAP_CONTENT, t = 12))
     }
 
+    private fun appAccent(a: AppEntry): Int {
+        val id = (a.pkg + " " + a.label).lowercase()
+        return when {
+            "youtube" in id -> Color.rgb(255, 48, 48)
+            "spotify" in id -> Color.rgb(29, 185, 84)
+            "netflix" in id -> Color.rgb(229, 9, 20)
+            "prime video" in id || "amazon" in id -> Color.rgb(0, 168, 225)
+            "disney" in id -> Color.rgb(35, 120, 255)
+            "twitch" in id -> Color.rgb(145, 70, 255)
+            "plex" in id -> Color.rgb(229, 160, 13)
+            else -> Color.rgb(169, 139, 255)
+        }
+    }
+
     private fun appCard(a: AppEntry): View {
+        val accent = appAccent(a)
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(10), dp(12), dp(8))
             layoutParams = lp(dp(112), dp(82), 5, 3, 5, 3)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(14).toFloat()
-                setColor(Color.rgb(35, 33, 55))
+            background = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_focused), GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(
+                        Color.argb(105, Color.red(accent), Color.green(accent), Color.blue(accent)),
+                        Color.rgb(35, 33, 55)
+                    )
+                ).apply {
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(2), Color.argb(235, Color.red(accent), Color.green(accent), Color.blue(accent)))
+                })
+                addState(intArrayOf(), GradientDrawable().apply {
+                    cornerRadius = dp(14).toFloat()
+                    setColor(Color.rgb(35, 33, 55))
+                    setStroke(dp(1), Color.argb(45, 255, 255, 255))
+                })
+            }
+            isFocusable = true
+            isClickable = true
+            foreground = RippleDrawable(
+                ColorStateList.valueOf(Color.argb(115, Color.red(accent), Color.green(accent), Color.blue(accent))),
+                null,
+                GradientDrawable().apply {
+                    cornerRadius = dp(14).toFloat()
+                    setColor(Color.WHITE)
+                }
+            )
+            setOnClickListener { launch(a) }
+            setOnLongClickListener { appMenu(a); true }
+            setOnFocusChangeListener { view, focused ->
+                view.animate()
+                    .scaleX(if (focused) 1.07f else 1f)
+                    .scaleY(if (focused) 1.07f else 1f)
+                    .translationZ(if (focused) dp(8).toFloat() else 0f)
+                    .setDuration(220)
+                    .setInterpolator(DecelerateInterpolator())
+                    .start()
             }
         }
         card.addView(ImageView(this).apply {
@@ -335,7 +387,6 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, dp(5), 0, 0)
         })
-        glassify(card, 14, { launch(a) }, { appMenu(a) }, 1.06f)
         return card
     }
 
