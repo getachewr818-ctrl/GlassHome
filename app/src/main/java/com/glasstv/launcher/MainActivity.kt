@@ -56,6 +56,8 @@ class MainActivity : Activity() {
     private lateinit var favRow: LinearLayout
     private lateinit var recentRow: LinearLayout
     private lateinit var allRow: LinearLayout
+    private lateinit var allTitle: TextView
+    private val navViews = linkedMapOf<String, TextView>()
 
     private val presets = listOf(
         "Midnight Aurora" to listOf("#070B1E", "#2A1B5E", "#0B5D70"),
@@ -161,18 +163,55 @@ class MainActivity : Activity() {
         return r
     }
 
-    private fun title(t: String) = content.addView(tv(t, 20f, 210, true).apply { setPadding(dp(8), dp(24), 0, 0) })
+    private fun title(t: String): TextView = tv(t, 15f, 235, true).apply {
+        setPadding(dp(8), dp(14), 0, 0)
+        content.addView(this)
+    }
+
+    private fun updateNavSelection(name: String) {
+        navViews.forEach { (label, item) ->
+            val active = label == name
+            item.text = (if (active) "⌂  " else "   ") + label
+            item.setTextColor(Color.argb(if (active) 255 else 175, 255, 255, 255))
+            item.typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            item.background = if (active) GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(Color.rgb(67, 55, 111))
+            } else null
+        }
+    }
+
+    private fun scrollToSection(target: View) {
+        var section = target
+        while (section.parent is View && section.parent !== content) {
+            section = section.parent as View
+        }
+        scroll.post { scroll.smoothScrollTo(0, section.top) }
+    }
+
+    private fun showCategory(name: String) {
+        val terms = when (name) {
+            "Movies" -> listOf("netflix", "prime", "disney", "plex", "movie", "cinema", "youtube", "video")
+            "TV Shows" -> listOf("netflix", "prime", "disney", "plex", "tv", "youtube", "video")
+            "Games" -> listOf("game", "play", "stadia", "xbox", "geforce", "steam")
+            else -> emptyList()
+        }
+        val matches = apps.filter { app -> terms.any { app.label.contains(it, true) } }
+        allTitle.text = name
+        fill(allRow, matches, "No matching $name apps found")
+        scrollToSection(allRow)
+    }
 
     private fun navItem(label: String, selected: Boolean = false, action: () -> Unit = {}): TextView =
-        tv((if (selected) "⌂  " else "   ") + label, 14f, if (selected) 255 else 185, selected).apply {
-            setPadding(dp(14), dp(12), dp(10), dp(12))
+        tv((if (selected) "⌂  " else "   ") + label, 12f, if (selected) 255 else 175, selected).apply {
+            setPadding(dp(10), dp(10), dp(6), dp(10))
             background = if (selected) GradientDrawable().apply {
-                cornerRadius = dp(14).toFloat()
-                setColor(Color.rgb(66, 53, 112))
+                cornerRadius = dp(12).toFloat()
+                setColor(Color.rgb(67, 55, 111))
             } else null
             isFocusable = true
             isClickable = true
-            setOnClickListener { action() }
+            setOnClickListener { updateNavSelection(label); action() }
         }
 
     private fun buildUi() {
@@ -184,36 +223,29 @@ class MainActivity : Activity() {
 
         val sidebar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(18), dp(12), dp(14))
+            setPadding(dp(8), dp(12), dp(8), dp(10))
             background = GradientDrawable().apply {
-                cornerRadius = dp(20).toFloat()
+                cornerRadius = dp(16).toFloat()
                 setColor(Color.rgb(23, 21, 45))
             }
         }
-        sidebar.addView(tv("◈", 28f, 255, true).apply {
-            gravity = Gravity.CENTER
-            setTextColor(Color.rgb(190, 165, 255))
-            setPadding(0, dp(4), 0, dp(4))
-        })
-        sidebar.addView(tv("GlassHome", 15f, 255, true).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(24))
-        })
         listOf("Home", "Apps", "Movies", "TV Shows", "Games", "Settings").forEachIndexed { index, name ->
-            sidebar.addView(navItem(name, index == 0) {
+            val item = navItem(name, index == 0) {
                 when (name) {
                     "Settings" -> openSettings()
-                    "Apps" -> scroll.smoothScrollTo(0, allRow.top)
-                    "Home" -> scroll.smoothScrollTo(0, 0)
-                    else -> Toast.makeText(this, "$name section coming soon", Toast.LENGTH_SHORT).show()
+                    "Apps" -> { allTitle.text = "All apps"; fill(allRow, apps, "No apps found"); scrollToSection(allRow) }
+                    "Home" -> { allTitle.text = "All apps"; refresh(); scroll.smoothScrollTo(0, 0) }
+                    "Movies", "TV Shows", "Games" -> showCategory(name)
                 }
-            }, lp(MATCH_PARENT, WRAP_CONTENT, t = 4))
+            }
+            navViews[name] = item
+            sidebar.addView(item, lp(MATCH_PARENT, WRAP_CONTENT, t = 4))
         }
         sidebar.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
         sidebar.addView(navItem("Power") { dialog().setTitle("Power").setItems(arrayOf("Android system settings", "Restart launcher")) { _, i ->
             if (i == 0) safeStart(Intent(Settings.ACTION_SETTINGS)) else refresh()
         }.show() })
-        root.addView(sidebar, LinearLayout.LayoutParams(dp(112), MATCH_PARENT).apply {
+        root.addView(sidebar, LinearLayout.LayoutParams(dp(88), MATCH_PARENT).apply {
             setMargins(dp(12), dp(12), dp(12), dp(12))
         })
 
@@ -222,7 +254,16 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), dp(14), dp(22), dp(8))
         }
-        val brand = tv("GLASSHOME", 13f, 240, true).apply { letterSpacing = 0.12f }
+        val brandIcon = tv("⌂", 18f, 255, true).apply {
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(9).toFloat()
+                setColor(Color.rgb(116, 88, 220))
+            }
+        }
+        header.addView(brandIcon, lp(dp(28), dp(28), r = 8))
+        val brand = tv("GlassHome", 14f, 245, true)
         header.addView(brand)
         header.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         val searchBar = tv("⌕  Search movies, apps and more", 13f, 170, false).apply {
@@ -233,7 +274,7 @@ class MainActivity : Activity() {
             }
         }
         glassify(searchBar, 22, { openSearch() }, scale = 1.02f)
-        header.addView(searchBar, lp(dp(230), WRAP_CONTENT, r = 14))
+        header.addView(searchBar, lp(dp(205), WRAP_CONTENT, r = 14))
         weather = tv("◉", 16f, 220, false).apply { gravity = Gravity.CENTER }
         header.addView(weather, lp(dp(34), WRAP_CONTENT, r = 8))
         val settingsBtn = tv("⚙", 18f, 230, false).apply { gravity = Gravity.CENTER }
@@ -259,7 +300,7 @@ class MainActivity : Activity() {
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             clipChildren = false
-            setPadding(dp(4), dp(8), dp(22), dp(26))
+            setPadding(dp(4), dp(4), dp(14), dp(18))
         }
         scroll.addView(content, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         main.addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
@@ -282,13 +323,14 @@ class MainActivity : Activity() {
             }
         }
         glassify(featured, 20, { featuredApp?.let { launch(it) } }, null, 1.015f)
-        content.addView(featured, lp(MATCH_PARENT, dp(166), t = 6))
+        content.addView(featured, lp(MATCH_PARENT, dp(156), t = 4))
         title("Your apps")
         favRow = addRow()
         title("Continue watching")
         recentRow = addRow()
-        title("All apps")
+        allTitle = title("All apps")
         allRow = addRow()
+        updateNavSelection("Home")
     }
 
     private fun greeting(): String {
@@ -320,29 +362,34 @@ class MainActivity : Activity() {
     }
 
     private fun appCard(a: AppEntry): View {
-        val card = LinearLayout(this).apply {
+        val wrapper = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(12), dp(10), dp(12), dp(8))
-            layoutParams = lp(dp(112), dp(82), 5, 3, 5, 3)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(14).toFloat()
-                setColor(Color.rgb(35, 33, 55))
-            }
+            layoutParams = lp(dp(80), WRAP_CONTENT, 4, 2, 4, 2)
         }
-        card.addView(ImageView(this).apply {
+        val tile = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = dp(11).toFloat()
+                setColor(Color.rgb(37, 35, 57))
+            }
+            isFocusable = true
+            isClickable = true
+        }
+        val icon = ImageView(this).apply {
             setImageDrawable(a.icon)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
-        })
-        card.addView(tv(a.label, 11f, 235, false).apply {
+            layoutParams = FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER)
+        }
+        tile.addView(icon)
+        glassify(tile, 11, { launch(a) }, { appMenu(a) }, 1.045f)
+        wrapper.addView(tile, LinearLayout.LayoutParams(MATCH_PARENT, dp(44)))
+        wrapper.addView(tv(a.label, 9f, 220, false).apply {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             gravity = Gravity.CENTER
             setPadding(0, dp(5), 0, 0)
-        })
-        glassify(card, 14, { launch(a) }, { appMenu(a) }, 1.06f)
-        return card
+        }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        return wrapper
     }
 
     private fun fill(row: LinearLayout, list: List<AppEntry>, empty: String) {
