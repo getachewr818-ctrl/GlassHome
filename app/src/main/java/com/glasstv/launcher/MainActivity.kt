@@ -43,6 +43,7 @@ import java.util.Calendar
 import kotlin.concurrent.thread
 
 data class AppEntry(val pkg: String, val label: String, val icon: Drawable, val intent: Intent)
+data class YouTubeHistoryEntry(val title: String, val url: String, val videoId: String, val watchedAt: String)
 
 
 private class SpotlightArtwork(context: android.content.Context) : View(context) {
@@ -110,6 +111,7 @@ class MainActivity : Activity() {
     private lateinit var featured: FrameLayout
     private lateinit var favRow: LinearLayout
     private lateinit var recentRow: LinearLayout
+    private var youtubeHistory = listOf<YouTubeHistoryEntry>()
     private lateinit var allRow: LinearLayout
     private lateinit var allTitle: TextView
     private val navViews = linkedMapOf<String, TextView>()
@@ -170,6 +172,8 @@ class MainActivity : Activity() {
             try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
             prefs.edit().putString("wp", "uri:$uri").apply()
             applyWallpaper()
+        } else if (requestCode == 43 && resultCode == RESULT_OK && uri != null) {
+            importYouTubeHistory(uri)
         }
     }
 
@@ -403,7 +407,7 @@ class MainActivity : Activity() {
         content.addView(featured, lp(MATCH_PARENT, dp(156), t = 4))
         title("Your apps")
         favRow = addRow()
-        title("Continue watching")
+        addContinueWatchingHeader()
         recentRow = addRow()
         allTitle = title("All apps")
         allRow = addRow()
@@ -544,11 +548,169 @@ class MainActivity : Activity() {
         return wrapper
     }
 
+    private fun addContinueWatchingHeader() {
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(14), dp(4), 0)
+        }
+        header.addView(tv("Continue watching", 15f, 235, true),
+            LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        val historyButton = tv("YouTube history  ›", 9f, 230, true).apply {
+            setPadding(dp(10), dp(7), dp(10), dp(7))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(Color.rgb(48, 42, 75))
+            }
+            isFocusable = true
+            setOnClickListener { openYouTubeHistoryMenu() }
+        }
+        header.addView(historyButton)
+        content.addView(header)
+    }
+
+    private fun openYouTubeHistoryMenu() {
+        dialog().setTitle("YouTube history")
+            .setItems(arrayOf("Open YouTube watch history", "Import Google Takeout history (.json)", "Clear imported history")) { _, which ->
+                when (which) {
+                    0 -> openYouTubeHistory()
+                    1 -> {
+                        val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "application/json"
+                        }
+                        try { startActivityForResult(pick, 43) }
+                        catch (_: Exception) { Toast.makeText(this, "File picker unavailable", Toast.LENGTH_LONG).show() }
+                    }
+                    2 -> {
+                        prefs.edit().remove("yt_history").apply()
+                        youtubeHistory = emptyList()
+                        fillYouTubeHistory()
+                        Toast.makeText(this, "Imported history cleared", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }.show()
+    }
+
+    private fun openYouTubeHistory() {
+        val history = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/feed/history"))
+        try { startActivity(history) }
+        catch (_: Exception) { safeStart(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/feed/history"))) }
+    }
+
+    private fun importYouTubeHistory(uri: Uri) {
+        thread {
+            try {
+                val raw = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    ?: throw IllegalStateException("Unable to read selected file")
+                val arr = org.json.JSONArray(raw)
+                val parsed = ArrayList<YouTubeHistoryEntry>()
+                for (i in 0 until arr.length()) {
+                    val item = arr.optJSONObject(i) ?: continue
+                    val title = item.optString("title").removePrefix("Watched ").trim()
+                    val videoUrl = item.optString("titleUrl").ifBlank { item.optString("url") }
+                    val id = Regex("(?:v=|youtu\\.be/|shorts/)([A-Za-z0-9_-]{6,})").find(videoUrl)?.groupValues?.get(1) ?: ""
+                    if (title.isNotBlank() && id.isNotBlank()) {
+                        parsed.add(YouTubeHistoryEntry(title, "https://www.youtube.com/watch?v=$id", id, item.optString("time")))
+                    }
+                }
+                val unique = parsed.distinctBy { it.videoId }.take(100)
+                val json = org.json.JSONArray()
+                unique.forEach { entry ->
+                    json.put(JSONObject().put("title", entry.title).put("url", entry.url)
+                        .put("id", entry.videoId).put("time", entry.watchedAt))
+                }
+                prefs.edit().putString("yt_history", json.toString()).apply()
+                ui.post {
+                    youtubeHistory = unique
+                    fillYouTubeHistory()
+                    Toast.makeText(this, "Imported ${unique.size} YouTube videos", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                ui.post { Toast.makeText(this, "Couldn't import this file. Choose Google Takeout watch-history.json", Toast.LENGTH_LONG).show() }
+            }
+        }
+    }
+
+    private fun loadYouTubeHistory() {
+        val raw = prefs.getString("yt_history", "[]") ?: "[]"
+        youtubeHistory = try {
+            val arr = org.json.JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i ->
+                val item = arr.optJSONObject(i) ?: return@mapNotNull null
+                YouTubeHistoryEntry(item.optString("title"), item.optString("url"),
+                    item.optString("id"), item.optString("time"))
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    private fun youTubeHistoryCard(entry: YouTubeHistoryEntry): View {
+        val wrapper = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = lp(dp(156), WRAP_CONTENT, 4, 2, 6, 2)
+        }
+        val tile = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(Color.rgb(24, 31, 52))
+            }
+            isFocusable = true
+            isClickable = true
+        }
+        val thumb = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+        tile.addView(thumb, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        tile.addView(tv("▶", 10f, 255, true).apply {
+            gravity = Gravity.BOTTOM or Gravity.LEFT
+            setPadding(dp(7), dp(4), dp(7), dp(4))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(7).toFloat()
+                setColor(Color.argb(190, 12, 12, 24))
+            }
+        }, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.LEFT).apply {
+            setMargins(dp(6), 0, 0, dp(6))
+        })
+        glassify(tile, 10, {
+            val position = prefs.getLong("yt_pos_${entry.videoId}", 0L)
+            val launchUrl = if (position > 0) "${entry.url}&t=${position / 1000}s" else entry.url
+            safeStart(Intent(Intent.ACTION_VIEW, Uri.parse(launchUrl)))
+        }, null, 1.025f)
+        wrapper.addView(tile, LinearLayout.LayoutParams(MATCH_PARENT, dp(78)))
+        wrapper.addView(tv(entry.title, 9f, 235, true).apply {
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(0, dp(5), 0, 0)
+        })
+        thread {
+            try {
+                val connection = URL("https://i.ytimg.com/vi/${entry.videoId}/hqdefault.jpg").openConnection() as HttpURLConnection
+                connection.connectTimeout = 7000
+                connection.readTimeout = 7000
+                val bitmap = connection.inputStream.use { BitmapFactory.decodeStream(it) }
+                if (bitmap != null) ui.post { thumb.setImageBitmap(bitmap) }
+                connection.disconnect()
+            } catch (_: Exception) {}
+        }
+        return wrapper
+    }
+
+    private fun fillYouTubeHistory() {
+        recentRow.removeAllViews()
+        if (youtubeHistory.isEmpty()) {
+            recentRow.addView(tv("Import your YouTube watch-history.json to show real video thumbnails here", 11f, 155, false).apply {
+                setPadding(dp(8), dp(16), 0, dp(16))
+            })
+        } else {
+            youtubeHistory.take(20).forEach { recentRow.addView(youTubeHistoryCard(it)) }
+        }
+    }
+
     private fun fillRecent(list: List<AppEntry>) {
         recentRow.removeAllViews()
-        if (list.isEmpty()) {
-            recentRow.addView(tv("Pick up where you left off", 12f, 145, false).apply {
-                setPadding(dp(8), dp(20), 0, dp(20))
+        if (youtubeHistory.isNotEmpty()) {
+            fillYouTubeHistory()
+        } else if (list.isEmpty()) {
+            recentRow.addView(tv("Open YouTube history or import your watch-history.json", 11f, 155, false).apply {
+                setPadding(dp(8), dp(16), 0, dp(16))
             })
         } else {
             list.forEach { recentRow.addView(recentCard(it)) }
@@ -575,6 +737,7 @@ class MainActivity : Activity() {
 
     private fun refresh() {
         loadApps()
+        loadYouTubeHistory()
         val byPkg = apps.associateBy { it.pkg }
         val recents = getList("recent").mapNotNull { byPkg[it] }
         val favs = getList("fav").mapNotNull { byPkg[it] }
