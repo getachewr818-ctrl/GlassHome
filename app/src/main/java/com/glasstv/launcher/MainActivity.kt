@@ -7,6 +7,10 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.LinearGradient
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -40,6 +44,57 @@ import kotlin.concurrent.thread
 
 data class AppEntry(val pkg: String, val label: String, val icon: Drawable, val intent: Intent)
 
+
+private class SpotlightArtwork(context: android.content.Context) : View(context) {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        super.onDraw(canvas)
+        val w = width.toFloat()
+        val h = height.toFloat()
+        p.shader = LinearGradient(0f, 0f, w, h,
+            intArrayOf(Color.rgb(34, 34, 67), Color.rgb(86, 79, 119), Color.rgb(18, 25, 45)),
+            null, Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, 0f, w, h, p)
+        p.shader = null
+
+        p.color = Color.argb(90, 207, 198, 255)
+        canvas.drawCircle(w * .68f, h * .18f, h * .43f, p)
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = h * .035f
+        p.color = Color.argb(105, 215, 208, 255)
+        canvas.save()
+        canvas.rotate(-17f, w * .68f, h * .18f)
+        canvas.drawOval(w * .48f, h * .05f, w * .91f, h * .32f, p)
+        canvas.restore()
+        p.style = Paint.Style.FILL
+
+        val far = Path().apply {
+            moveTo(0f, h * .78f); lineTo(w * .18f, h * .57f); lineTo(w * .31f, h * .72f)
+            lineTo(w * .48f, h * .55f); lineTo(w * .65f, h * .76f); lineTo(w * .82f, h * .60f)
+            lineTo(w, h * .73f); lineTo(w, h); lineTo(0f, h); close()
+        }
+        p.color = Color.rgb(35, 39, 61); canvas.drawPath(far, p)
+        val near = Path().apply {
+            moveTo(0f, h * .88f); lineTo(w * .19f, h * .74f); lineTo(w * .34f, h * .85f)
+            lineTo(w * .55f, h * .70f); lineTo(w * .73f, h * .86f); lineTo(w * .89f, h * .72f)
+            lineTo(w, h * .82f); lineTo(w, h); lineTo(0f, h); close()
+        }
+        p.color = Color.rgb(17, 22, 37); canvas.drawPath(near, p)
+
+        // Small distant astronaut silhouette on the right side of the spotlight.
+        p.color = Color.rgb(9, 14, 22)
+        val ax = w * .84f
+        val ay = h * .45f
+        canvas.drawCircle(ax, ay, h * .055f, p)
+        canvas.drawRoundRect(ax - h*.07f, ay + h*.04f, ax + h*.065f, ay + h*.34f, h*.035f, h*.035f, p)
+        canvas.drawRoundRect(ax - h*.12f, ay + h*.08f, ax - h*.065f, ay + h*.29f, h*.02f, h*.02f, p)
+        canvas.drawLine(ax - h*.035f, ay + h*.32f, ax - h*.09f, h*.94f, p.apply { strokeWidth = h*.055f; strokeCap = Paint.Cap.ROUND })
+        canvas.drawLine(ax + h*.035f, ay + h*.32f, ax + h*.08f, h*.94f, p)
+        canvas.drawLine(ax - h*.06f, ay + h*.12f, ax - h*.13f, ay + h*.30f, p)
+        canvas.drawLine(ax + h*.06f, ay + h*.12f, ax + h*.12f, ay + h*.29f, p)
+    }
+}
+
 class MainActivity : Activity() {
 
     private lateinit var prefs: SharedPreferences
@@ -52,7 +107,7 @@ class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private lateinit var clock: TextClock
     private lateinit var weather: TextView
-    private lateinit var featured: LinearLayout
+    private lateinit var featured: FrameLayout
     private lateinit var favRow: LinearLayout
     private lateinit var recentRow: LinearLayout
     private lateinit var allRow: LinearLayout
@@ -313,16 +368,18 @@ class MainActivity : Activity() {
         }
         setContentView(screen)
 
-        featured = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(24), dp(18), dp(24), dp(18))
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.rgb(53, 44, 91), Color.rgb(24, 28, 58), Color.rgb(11, 20, 39))).apply {
-                cornerRadius = dp(20).toFloat()
-            }
+        featured = FrameLayout(this).apply {
+            clipToOutline = true
+            background = GradientDrawable().apply { cornerRadius = dp(18).toFloat() }
+            isFocusable = true
+            isClickable = true
         }
-        glassify(featured, 20, { featuredApp?.let { launch(it) } }, null, 1.015f)
+        featured.addView(SpotlightArtwork(this), FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        featured.addView(View(this).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.rgb(13, 13, 30), Color.argb(220, 13, 13, 30), Color.TRANSPARENT))
+        }, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        glassify(featured, 18, { featuredApp?.let { launch(it) } ?: openSearch() }, null, 1.01f)
         content.addView(featured, lp(MATCH_PARENT, dp(156), t = 4))
         title("Your apps")
         favRow = addRow()
@@ -339,26 +396,56 @@ class MainActivity : Activity() {
     }
 
     private fun fillFeatured() {
-        featured.removeAllViews()
-        featured.addView(tv("GLASSHOME SPOTLIGHT", 10f, 180, true).apply { letterSpacing = 0.18f })
-        featured.addView(tv("YOUR ENTERTAINMENT.\nALL IN ONE PLACE.", 27f, 255, true).apply {
-            setPadding(0, dp(8), 0, dp(6))
+        featured.removeViews(2, (featured.childCount - 2).coerceAtLeast(0))
+        val copy = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(8), dp(12), dp(8))
+        }
+        copy.addView(tv("GLASSHOME SPOTLIGHT", 8f, 190, true).apply { letterSpacing = 0.18f })
+        copy.addView(tv("BEYOND THE\nSILENCE", 25f, 255, true).apply {
+            setLineSpacing(0f, 0.92f)
+            setPadding(0, dp(5), 0, dp(5))
         })
-        featured.addView(tv(featuredApp?.let { "Jump back into ${it.label}" } ?: "Discover apps ready to explore", 13f, 190, false))
-        val actions = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val watch = tv("▶  Open now", 12f, 255, true).apply {
-            setPadding(dp(16), dp(9), dp(16), dp(9))
+        copy.addView(tv("2025   •   Sci-fi adventure   •   2h 18m", 9f, 205, false))
+        copy.addView(tv("One signal. A thousand worlds waiting.\nDiscover what lies on the other side.", 9f, 205, false).apply {
+            setPadding(0, dp(5), 0, 0)
+        })
+        val actions = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(7), 0, 0)
+        }
+        val watch = tv("▶  Watch now", 10f, 255, true).apply {
+            setPadding(dp(13), dp(7), dp(13), dp(7))
             background = GradientDrawable().apply {
-                cornerRadius = dp(18).toFloat()
-                setColor(Color.rgb(190, 164, 255))
+                cornerRadius = dp(14).toFloat()
+                setColor(Color.rgb(202, 183, 255))
             }
             setTextColor(Color.rgb(25, 20, 42))
             isFocusable = true
             setOnClickListener { featuredApp?.let { launch(it) } ?: openSearch() }
         }
         actions.addView(watch)
-        actions.addView(tv("   ✦  A better way to watch", 11f, 185, false))
-        featured.addView(actions, lp(WRAP_CONTENT, WRAP_CONTENT, t = 12))
+        val watchlist = tv("＋  Watchlist", 10f, 235, false).apply {
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(Color.argb(105, 55, 49, 79))
+            }
+            isFocusable = true
+            setOnClickListener { Toast.makeText(this@MainActivity, "Watchlist coming soon", Toast.LENGTH_SHORT).show() }
+        }
+        actions.addView(watchlist, lp(WRAP_CONTENT, WRAP_CONTENT, l = 7))
+        copy.addView(actions)
+        featured.addView(copy, FrameLayout.LayoutParams(dp(300), MATCH_PARENT, Gravity.LEFT or Gravity.CENTER_VERTICAL))
+        featured.addView(tv("01 / 04", 8f, 230, false).apply {
+            gravity = Gravity.TOP or Gravity.RIGHT
+            setPadding(0, dp(10), dp(12), 0)
+        }, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.RIGHT))
+        featured.addView(tv("●  •  •", 8f, 210, false).apply {
+            gravity = Gravity.BOTTOM or Gravity.RIGHT
+            setPadding(0, 0, dp(16), dp(9))
+        }, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.RIGHT))
     }
 
     private fun appCard(a: AppEntry): View {
