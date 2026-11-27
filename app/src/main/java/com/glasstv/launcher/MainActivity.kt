@@ -163,55 +163,126 @@ class MainActivity : Activity() {
 
     private fun title(t: String) = content.addView(tv(t, 20f, 210, true).apply { setPadding(dp(8), dp(24), 0, 0) })
 
-    private fun buildUi() {
-        val root = FrameLayout(this)
-        bg = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-        root.addView(bg, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-        root.addView(View(this).apply { setBackgroundColor(Color.argb(90, 0, 0, 0)) }, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-        scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false; clipChildren = false; clipToPadding = false }
-        content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; clipChildren = false
-            setPadding(dp(56), dp(32), dp(56), dp(56))
+    private fun navItem(label: String, selected: Boolean = false, action: () -> Unit = {}): TextView =
+        tv((if (selected) "⌂  " else "   ") + label, 14f, if (selected) 255 else 185, selected).apply {
+            setPadding(dp(14), dp(12), dp(10), dp(12))
+            background = if (selected) GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(Color.rgb(66, 53, 112))
+            } else null
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { action() }
         }
-        scroll.addView(content, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-        root.addView(scroll, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-        setContentView(root)
 
-        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; clipChildren = false }
-        val timeCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    private fun buildUi() {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.rgb(12, 11, 27))
+            clipChildren = false
+        }
+
+        val sidebar = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(18), dp(12), dp(14))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(Color.rgb(23, 21, 45))
+            }
+        }
+        sidebar.addView(tv("◈", 28f, 255, true).apply {
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(190, 165, 255))
+            setPadding(0, dp(4), 0, dp(4))
+        })
+        sidebar.addView(tv("GlassHome", 15f, 255, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(24))
+        })
+        listOf("Home", "Apps", "Movies", "TV Shows", "Games", "Settings").forEachIndexed { index, name ->
+            sidebar.addView(navItem(name, index == 0) {
+                when (name) {
+                    "Settings" -> openSettings()
+                    "Apps" -> scroll.smoothScrollTo(0, allRow.top)
+                    "Home" -> scroll.smoothScrollTo(0, 0)
+                    else -> Toast.makeText(this, "$name section coming soon", Toast.LENGTH_SHORT).show()
+                }
+            }, lp(MATCH_PARENT, WRAP_CONTENT, t = 4))
+        }
+        sidebar.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
+        sidebar.addView(navItem("Power") { dialog().setTitle("Power").setItems(arrayOf("Android system settings", "Restart launcher")) { _, i ->
+            if (i == 0) safeStart(Intent(Settings.ACTION_SETTINGS)) else refresh()
+        }.show() })
+        root.addView(sidebar, LinearLayout.LayoutParams(dp(112), MATCH_PARENT).apply {
+            setMargins(dp(12), dp(12), dp(12), dp(12))
+        })
+
+        val main = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val header = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(14), dp(22), dp(8))
+        }
+        val brand = tv("GLASSHOME", 13f, 240, true).apply { letterSpacing = 0.12f }
+        header.addView(brand)
+        header.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        val searchBar = tv("⌕  Search movies, apps and more", 13f, 170, false).apply {
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(22).toFloat()
+                setColor(Color.rgb(35, 32, 58))
+            }
+        }
+        glassify(searchBar, 22, { openSearch() }, scale = 1.02f)
+        header.addView(searchBar, lp(dp(230), WRAP_CONTENT, r = 14))
+        weather = tv("◉", 16f, 220, false).apply { gravity = Gravity.CENTER }
+        header.addView(weather, lp(dp(34), WRAP_CONTENT, r = 8))
+        val settingsBtn = tv("⚙", 18f, 230, false).apply { gravity = Gravity.CENTER }
+        glassify(settingsBtn, 18, { openSettings() }, scale = 1.05f)
+        header.addView(settingsBtn, lp(dp(34), dp(34), r = 8))
+        val notify = tv("♧", 17f, 230, false).apply { gravity = Gravity.CENTER }
+        glassify(notify, 18, { Toast.makeText(this, "No new notifications", Toast.LENGTH_SHORT).show() })
+        header.addView(notify, lp(dp(34), dp(34), r = 18))
         clock = TextClock(this).apply {
-            textSize = 64f; setTextColor(Color.WHITE)
-            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            textSize = 17f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         }
         applyClock()
-        val date = TextClock(this).apply {
-            format12Hour = "EEEE, d MMMM"; format24Hour = "EEEE, d MMMM"
-            textSize = 20f; setTextColor(Color.argb(200, 255, 255, 255))
-        }
-        timeCol.addView(clock); timeCol.addView(date)
-        weather = tv("Loading weather…", 18f, 230, false).apply {
-            setPadding(dp(24), dp(14), dp(24), dp(14)); background = glass(20, false)
-        }
-        val searchBar = tv("Search apps or the web", 18f, 200, false).apply {
-            setPadding(dp(28), dp(16), dp(28), dp(16)); gravity = Gravity.CENTER_VERTICAL
-        }
-        glassify(searchBar, 40, { openSearch() })
-        val settingsBtn = tv("Settings", 18f, 230, false).apply { setPadding(dp(28), dp(16), dp(28), dp(16)) }
-        glassify(settingsBtn, 40, { openSettings() })
-        header.addView(timeCol)
-        header.addView(weather, lp(WRAP_CONTENT, WRAP_CONTENT, l = 40))
-        header.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        header.addView(searchBar, lp(dp(380), WRAP_CONTENT))
-        header.addView(settingsBtn, lp(WRAP_CONTENT, WRAP_CONTENT, l = 16))
-        content.addView(header, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        header.addView(clock, lp(WRAP_CONTENT, WRAP_CONTENT, l = 18))
+        main.addView(header, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
-        featured = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(44), dp(24), dp(44), dp(24)) }
-        glassify(featured, 36, { featuredApp?.let { launch(it) } }, null, 1.03f)
-        content.addView(featured, lp(MATCH_PARENT, dp(220), t = 28))
+        scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            clipChildren = false
+            clipToPadding = false
+        }
+        content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            clipChildren = false
+            setPadding(dp(4), dp(8), dp(22), dp(26))
+        }
+        scroll.addView(content, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        main.addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+        root.addView(main, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f))
+        setContentView(root)
 
-        title("Favorites"); favRow = addRow()
-        title("Recently used"); recentRow = addRow()
-        title("All apps"); allRow = addRow()
+        featured = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(24), dp(18), dp(24), dp(18))
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(53, 44, 91), Color.rgb(24, 28, 58), Color.rgb(11, 20, 39))).apply {
+                cornerRadius = dp(20).toFloat()
+            }
+        }
+        glassify(featured, 20, { featuredApp?.let { launch(it) } }, null, 1.015f)
+        content.addView(featured, lp(MATCH_PARENT, dp(166), t = 6))
+        title("Your apps")
+        favRow = addRow()
+        title("Continue watching")
+        recentRow = addRow()
+        title("All apps")
+        allRow = addRow()
     }
 
     private fun greeting(): String {
@@ -221,31 +292,50 @@ class MainActivity : Activity() {
 
     private fun fillFeatured() {
         featured.removeAllViews()
-        val a = featuredApp
-        if (a != null) featured.addView(ImageView(this).apply {
-            setImageDrawable(a.icon)
-            layoutParams = LinearLayout.LayoutParams(dp(112), dp(112)).apply { rightMargin = dp(36) }
+        featured.addView(tv("GLASSHOME SPOTLIGHT", 10f, 180, true).apply { letterSpacing = 0.18f })
+        featured.addView(tv("YOUR ENTERTAINMENT.\nALL IN ONE PLACE.", 27f, 255, true).apply {
+            setPadding(0, dp(8), 0, dp(6))
         })
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        col.addView(tv("${greeting().uppercase()}  ·  CONTINUE", 14f, 170, false).apply { letterSpacing = 0.15f })
-        col.addView(tv(a?.label ?: "Welcome", 40f, 255, true))
-        col.addView(tv("Press OK to open  ·  Menu button for settings", 16f, 150, false).apply { setPadding(0, dp(8), 0, 0) })
-        featured.addView(col)
+        featured.addView(tv(featuredApp?.let { "Jump back into ${it.label}" } ?: "Discover apps ready to explore", 13f, 190, false))
+        val actions = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        val watch = tv("▶  Open now", 12f, 255, true).apply {
+            setPadding(dp(16), dp(9), dp(16), dp(9))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                setColor(Color.rgb(190, 164, 255))
+            }
+            setTextColor(Color.rgb(25, 20, 42))
+            isFocusable = true
+            setOnClickListener { featuredApp?.let { launch(it) } ?: openSearch() }
+        }
+        actions.addView(watch)
+        actions.addView(tv("   ✦  A better way to watch", 11f, 185, false))
+        featured.addView(actions, lp(WRAP_CONTENT, WRAP_CONTENT, t = 12))
     }
 
     private fun appCard(a: AppEntry): View {
         val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            setPadding(dp(14), dp(18), dp(14), dp(14))
-            layoutParams = lp(dp(150), dp(150), 8, 4, 8, 4)
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(10), dp(12), dp(8))
+            layoutParams = lp(dp(112), dp(82), 5, 3, 5, 3)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(Color.rgb(35, 33, 55))
+            }
         }
         card.addView(ImageView(this).apply {
-            setImageDrawable(a.icon); layoutParams = LinearLayout.LayoutParams(dp(72), dp(72))
+            setImageDrawable(a.icon)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
         })
-        card.addView(tv(a.label, 14f, 240, false).apply {
-            maxLines = 1; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0)
+        card.addView(tv(a.label, 11f, 235, false).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            gravity = Gravity.CENTER
+            setPadding(0, dp(5), 0, 0)
         })
-        glassify(card, 24, { launch(a) }, { appMenu(a) })
+        glassify(card, 14, { launch(a) }, { appMenu(a) }, 1.06f)
         return card
     }
 
